@@ -1,0 +1,30 @@
+we are starting from creating dnsrecord first
+
+Why are we already making multiple files?
+Because I don't want you to develop the habit of putting everything inside main.cpp.
+A professional project separates responsibilities.
+
+For example:
+DNSRecord.cpp
+      ↓
+DNS record logic
+
+RootServer.cpp
+      ↓
+Root server logic
+
+DNSResolver.cpp
+      ↓
+resolution logic
+This is called separation of concerns.
+
+
+
+But there's an important OOP lesson here
+We're going to introduce a new class:
+DNSResolver
+This class will become the brain of our system.
+Its job is not to store every DNS record.
+Its job is to coordinate the DNS servers.
+That's an important software-engineering principle:
+One class should have one clear responsibility.
