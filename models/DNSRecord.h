@@ -2,6 +2,7 @@
 #define DNSRECORD_H
 
 #include <string>
+
 using namespace std;
 
 class DNSRecord
@@ -13,7 +14,6 @@ private:
     int ttl;
 
 public:
-
     DNSRecord();
 
     DNSRecord(string domain, string type, string value, int ttl);

@@ -3,6 +3,7 @@
 
 using namespace std;
 
+
 AuthoritativeServer::AuthoritativeServer()
     : DNSServer("Authoritative Server")
 {
@@ -31,25 +32,31 @@ AuthoritativeServer::AuthoritativeServer()
         );
 }
 
+
 DNSRecord AuthoritativeServer::resolve(string domain)
 {
     cout << "[Authoritative Server] Processing: "
          << domain << endl;
 
-    if (records.find(domain) != records.end())
+    auto it = records.find(domain);
+
+    if (it != records.end())
     {
-        return records[domain];
+        return it->second;
     }
 
     return DNSRecord();
 }
+
 
 bool AuthoritativeServer::hasRecord(string domain) const
 {
     return records.find(domain) != records.end();
 }
 
+
 void AuthoritativeServer::displayInfo() const
 {
-    cout << "Server Type: " << serverName << endl;
+    cout << "Server Type: "
+         << serverName << endl;
 }

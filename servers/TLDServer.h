@@ -7,11 +7,13 @@
 class TLDServer : public DNSServer
 {
 private:
+
     map<string, string> authoritativeServers;
 
     string extractDomain(string domain);
 
 public:
+
     TLDServer();
 
     DNSRecord resolve(string domain) override;
