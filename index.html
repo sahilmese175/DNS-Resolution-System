@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DNS Resolution System</title>
+<style>
+  :root {
+    --paper: #F1F4F1; --panel: #FFFFFF; --ink: #17232B; --muted: #56646C; --rule: #D2DAD5;
+    --root: #3B4CCA; --tld: #0B7479; --auth: #C0384F; --hit: #946000; --miss: #7A878E;
+    --focus: #1F6FEB;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.5 var(--sans); }
+  .page { max-width: 1080px; margin: 0 auto; padding: 40px 24px 72px; }
+  h1 { font: 600 clamp(2rem, 4vw, 2.9rem)/1.1 var(--serif); letter-spacing: -0.01em; margin: 0 0 12px; }
+  .lead { max-width: 62ch; color: var(--muted); margin: 0 0 32px; }
+  h2 { font: 700 1rem/1.3 var(--sans); margin: 0 0 12px; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 48px; align-items: start; }
+
+  .ask { display: flex; border: 2px solid var(--ink); background: var(--panel); border-radius: 6px; }
+  .ask:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .ask input { flex: 1; min-width: 0; border: 0; padding: 14px 16px; font: 1.1rem var(--mono); background: transparent; color: var(--ink); outline: none; }
+  .ask select { border: 0; border-left: 2px solid var(--ink); padding: 0 12px; background: transparent; font: inherit; color: var(--ink); cursor: pointer; }
+  .ask button { border: 0; background: var(--ink); color: #fff; padding: 0 28px; font: 600 1rem var(--sans); cursor: pointer; }
+  .ask button:disabled { opacity: .6; cursor: progress; }
+  button:focus-visible, a:focus-visible, select:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+  .hint, .empty { color: var(--muted); margin: 20px 0 0; max-width: 60ch; }
+  .empty { margin: 0; font-size: .95rem; }
+
+  /* the lookup path */
+  .track { position: relative; margin: 32px 0 8px; padding-left: 36px; }
+  .track::before { content: ""; position: absolute; left: 7px; top: 10px; bottom: 28px; width: 3px; background: var(--rule); }
+  .stop { position: relative; padding-bottom: 22px; opacity: 0; animation: arrive .4s ease forwards; animation-delay: calc(var(--i) * 170ms); }
+  .stop::before { content: ""; position: absolute; left: -36px; top: 5px; width: 17px; height: 17px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 4px var(--paper); }
+  .stop.side { margin-left: 24px; }
+  .stop.side::before { width: 13px; height: 13px; left: -34px; top: 7px; }
+  .role { font-weight: 700; color: var(--c); }
+  .srv { font: .95rem var(--mono); word-break: break-all; }
+  .note { color: var(--muted); font-size: .92rem; }
+  .sidenote { color: var(--muted); font-size: .9rem; margin: 0 0 8px 24px; font-style: italic; }
+  .root { --c: var(--root); } .tld { --c: var(--tld); } .auth { --c: var(--auth); }
+  .hit { --c: var(--hit); } .miss { --c: var(--miss); }
+  @keyframes arrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  .answer { border-top: 2px solid var(--ink); padding-top: 14px; margin-top: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+  th { text-align: left; font-weight: 600; color: var(--muted); padding: 6px 12px 6px 0; border-bottom: 1px solid var(--rule); }
+  td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  td.v { font-family: var(--mono); word-break: break-all; }
+  .meta { color: var(--muted); margin: 14px 0; }
+  .open { display: inline-block; background: var(--ink); color: #fff; text-decoration: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; }
+  .openNote { color: var(--muted); font-size: .9rem; margin: 8px 0 0; max-width: 60ch; }
+  .error { border-left: 4px solid var(--auth); background: var(--panel); padding: 12px 16px; margin-top: 8px; }
+  .error strong { display: block; }
+
+  /* side panels */
+  .side section { border-top: 2px solid var(--ink); padding-top: 12px; margin-bottom: 32px; }
+  .side table { font-size: .88rem; }
+  .side td.v { font-family: var(--mono); }
+  dl { margin: 0; display: grid; grid-template-columns: 1fr auto; row-gap: 4px; }
+  dt { color: var(--muted); } dd { margin: 0; font-weight: 600; text-align: right; }
+  ol { list-style: none; margin: 0; padding: 0; }
+  ol li { padding: 7px 0; border-bottom: 1px solid var(--rule); font-size: .92rem; display: flex; justify-content: space-between; gap: 12px; }
+  ol li .d { word-break: break-all; } ol li .r { color: var(--muted); white-space: nowrap; }
+  .quiet { margin-top: 12px; background: none; border: 1px solid var(--ink); border-radius: 6px; padding: 6px 14px; font: inherit; color: var(--ink); cursor: pointer; }
+
+  @media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); gap: 32px; } }
+  @media (prefers-reduced-motion: reduce) { .stop { animation: none; opacity: 1; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>DNS Resolution System</h1>
+  <p class="lead">Type a website name and watch it resolve through the real DNS hierarchy: the root servers, then the TLD servers, then the site's own name servers.</p>
+
+  <div class="layout">
+    <section class="work">
+      <form id="ask" class="ask">
+        <label class="sr" for="domain">Website name</label>
+        <input id="domain" placeholder="www.google.com" autocomplete="off" spellcheck="false" autofocus>
+        <label class="sr" for="type">Record type</label>
+        <select id="type">
+          <option>A</option><option>AAAA</option><option>CNAME</option>
+          <option>MX</option><option>NS</option><option>TXT</option>
+        </select>
+        <button id="go" type="submit">Resolve</button>
+      </form>
+      <div id="out" aria-live="polite">
+        <p class="hint">Try www.google.com, then resolve it again. The second answer comes from the cache without asking any server.</p>
+      </div>
+    </section>
+
+    <aside class="side">
+      <section>
+        <h2>Cache</h2>
+        <div id="cache"></div>
+        <button id="clear" class="quiet" type="button">Clear cache</button>
+      </section>
+      <section>
+        <h2>Statistics</h2>
+        <dl id="stats"></dl>
+      </section>
+      <section>
+        <h2>Query history</h2>
+        <ol id="log"></ol>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+async function api(url, opts) { return (await fetch(url, opts)).json(); }
+
+const STAGES = {
+  'Root Server': ['root', 'Root server'],
+  'TLD Server': ['tld', 'TLD server'],
+  'Authoritative Server': ['auth', 'Authoritative server']
+};
+let cacheRows = [];
+
+function stop(i, kind, title, detail, note, side) {
+  const s = el('div', 'stop ' + kind + (side ? ' side' : ''));
+  s.style.setProperty('--i', i);
+  s.appendChild(el('div', 'role', title));
+  if (detail) s.appendChild(el('div', 'srv', detail));
+  if (note) s.appendChild(el('div', 'note', note));
+  return s;
+}
+
+function render(d) {
+  const out = $('#out');
+  out.textContent = '';
+  const track = el('div', 'track');
+  let i = 0;
+
+  if (d.hops.length || d.cache) {
+    if (d.cache === 'HIT') track.appendChild(stop(i++, 'hit', 'DNS cache', '', 'Found a valid saved answer, so no server was asked.'));
+    else if (d.hops.length) track.appendChild(stop(i++, 'miss', 'DNS cache', '', 'No valid saved answer, so the servers are asked.'));
+  }
+  let prevDepth = 0;
+  d.hops.forEach((h, n) => {
+    const st = STAGES[h.role] || ['auth', h.role];
+    const last = n === d.hops.length - 1;
+    if (h.depth > prevDepth) {
+      const p = el('p', 'sidenote', 'Separate lookup needed along the way');
+      p.style.setProperty('--i', i); track.appendChild(p);
+    }
+    prevDepth = h.depth;
+    const note = last ? (d.ok ? 'Returned the records.' : 'Could not give an answer.') : 'Pointed us to the next level.';
+    track.appendChild(stop(i++, st[0], st[1], h.name + '  ' + h.ip, note, h.depth > 0));
+  });
+  if (track.children.length) out.appendChild(track);
+
+  if (!d.ok) {
+    const e = el('div', 'error');
+    e.appendChild(el('strong', '', 'Could not resolve ' + (d.domain || 'that name')));
+    let why = d.error;
+    if (/no server responded/.test(d.error)) why += '. No DNS server answered. Your network may block DNS traffic (UDP port 53), so try another network or a mobile hotspot.';
+    else if (/NXDOMAIN/.test(d.error)) why += '. Check the spelling of the name.';
+    e.appendChild(el('span', '', why));
+    out.appendChild(e);
+    return;
+  }
+
+  const box = el('div', 'answer');
+  box.appendChild(el('h2', '', 'Answer'));
+  const t = el('table');
+  const head = el('tr');
+  ['Name', 'Type', 'Value', 'TTL'].forEach(h => head.appendChild(el('th', '', h)));
+  t.appendChild(head);
+  d.records.forEach(r => {
+    const tr = el('tr');
+    tr.appendChild(el('td', '', r.name));
+    tr.appendChild(el('td', '', r.type));
+    tr.appendChild(el('td', 'v', r.value));
+    tr.appendChild(el('td', '', r.ttl + 's'));
+    t.appendChild(tr);
+  });
+  box.appendChild(t);
+  box.appendChild(el('p', 'meta', 'Resolved in ' + d.ms + ' ms. Cache ' + (d.cache === 'HIT' ? 'hit.' : 'miss.')));
+
+  if (['A', 'AAAA', 'CNAME'].includes(d.type)) {
+    const a = el('a', 'open', 'Open website');
+    a.href = 'https://' + d.domain;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    box.appendChild(a);
+    box.appendChild(el('p', 'openNote', 'Opens ' + d.domain + ' in a new tab. Your browser makes its own DNS lookup to load the page.'));
+  }
+  out.appendChild(box);
+}
+
+function drawCache() {
+  const box = $('#cache');
+  box.textContent = '';
+  cacheRows = cacheRows.filter(r => r.remaining > 0);
+  if (!cacheRows.length) { box.appendChild(el('p', 'empty', 'Nothing saved yet. Resolve a website and its answer appears here.')); return; }
+  const t = el('table');
+  cacheRows.forEach(r => {
+    const tr = el('tr');
+    tr.appendChild(el('td', 'v', r.domain));
+    tr.appendChild(el('td', '', r.type));
+    tr.appendChild(el('td', '', r.remaining + 's left'));
+    t.appendChild(tr);
+  });
+  box.appendChild(t);
+}
+
+async function refreshSide() {
+  const [s, c] = await Promise.all([api('/api/stats'), api('/api/cache')]);
+  cacheRows = c;
+  drawCache();
+
+  const dl = $('#stats');
+  dl.textContent = '';
+  [['Cache hits', s.hits], ['Cache misses', s.misses], ['Hit ratio', s.ratio + '%'], ['Saved answers', s.entries]]
+    .forEach(([k, v]) => { dl.appendChild(el('dt', '', k)); dl.appendChild(el('dd', '', String(v))); });
+
+  const ol = $('#log');
+  ol.textContent = '';
+  if (!s.log.length) { ol.appendChild(el('li', 'empty', 'No lookups yet.')); return; }
+  s.log.slice(-8).reverse().forEach(q => {
+    const li = el('li');
+    li.appendChild(el('span', 'd', q.domain + ' ' + q.type));
+    li.appendChild(el('span', 'r', q.status + ', ' + q.ms + ' ms'));
+    ol.appendChild(li);
+  });
+}
+
+$('#ask').addEventListener('submit', async e => {
+  e.preventDefault();
+  const domain = $('#domain').value.trim();
+  if (!domain) { $('#domain').focus(); return; }
+  const go = $('#go');
+  go.disabled = true;
+  $('#out').replaceChildren(el('p', 'hint', 'Resolving ' + domain + '...'));
+  try {
+    render(await api('/api/resolve?domain=' + encodeURIComponent(domain) + '&type=' + $('#type').value));
+    await refreshSide();
+  } catch (err) {
+    const box = el('div', 'error');
+    box.appendChild(el('strong', '', 'Cannot reach the DNS program'));
+    box.appendChild(el('span', '', 'Make sure dns.exe is still running with the web UI started (menu option 5).'));
+    $('#out').replaceChildren(box);
+  } finally {
+    go.disabled = false;
+  }
+});
+
+$('#clear').addEventListener('click', async () => {
+  await api('/api/clear', { method: 'POST' });
+  refreshSide();
+});
+
+setInterval(() => { cacheRows.forEach(r => r.remaining--); drawCache(); }, 1000);
+refreshSide().catch(() => {});
+</script>
+</body>
+</html>
